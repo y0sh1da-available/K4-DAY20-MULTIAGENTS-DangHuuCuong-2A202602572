@@ -227,3 +227,4 @@ Nhóm đã hoàn thành xuất sắc **2 Thử thách Mở rộng**:
   - Endpoint `/metrics`: Cung cấp dữ liệu JSON chỉ số hệ thống cho các công cụ giám sát ngoài.
   - Endpoint `/logs`: Trực tiếp trích xuất các đoạn trích vết thực thi (`trace.md`).
 - **Khởi chạy:** `python scripts/dashboard.py` (truy cập tại `http://localhost:8000/dashboard`).
+
