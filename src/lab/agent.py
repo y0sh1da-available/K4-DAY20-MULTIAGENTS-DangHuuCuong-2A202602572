@@ -40,6 +40,53 @@ SUBAGENTS_NOTE = (
 # --------------------------------------------------------------------------------------------------
 
 
+class _WindowsShBackend(LocalShellBackend):
+    """Trên Windows, sử dụng sh.exe của Git để hỗ trợ shell POSIX (/bin/sh) theo đúng yêu cầu đề bài."""
+    def execute(self, command: str, *, timeout: int | None = None):
+        sh_path = Path("C:/Program Files/Git/bin/sh.exe")
+        if not sh_path.exists():
+            return super().execute(command, timeout=timeout)
+        if not command or not isinstance(command, str):
+            from deepagents.backends.protocol import ExecuteResponse
+            return ExecuteResponse(output="Error: Command must be a non-empty string.", exit_code=1, truncated=False)
+        effective_timeout = timeout if timeout is not None else self._default_timeout
+        if effective_timeout <= 0:
+            raise ValueError(f"timeout must be positive, got {effective_timeout}")
+
+        import subprocess
+        from deepagents.backends.protocol import ExecuteResponse
+        try:
+            result = subprocess.run(
+                [str(sh_path), "-c", command],
+                check=False,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                timeout=effective_timeout,
+                env=self._env,
+                cwd=str(self.cwd),
+            )
+            output_parts = []
+            if result.stdout:
+                output_parts.append(result.stdout)
+            if result.stderr:
+                stderr_lines = result.stderr.strip().split("\n")
+                output_parts.extend(f"[stderr] {line}" for line in stderr_lines)
+
+            output = "\n".join(output_parts) if output_parts else "<no output>"
+            truncated = False
+            if len(output) > self._max_output_bytes:
+                output = output[: self._max_output_bytes] + f"\n\n... Output truncated at {self._max_output_bytes} bytes."
+                truncated = True
+
+            if result.returncode != 0:
+                output = f"{output.rstrip()}\n\nExit code: {result.returncode}"
+
+            return ExecuteResponse(output=output, exit_code=result.returncode, truncated=truncated)
+        except Exception as e:
+            return ExecuteResponse(output=f"Error executing command ({type(e).__name__}): {e}", exit_code=1, truncated=False)
+
+
 def make_backend(sandbox: Path):
     """Tạo backend (môi trường thực thi) cho tác tử.
 
@@ -63,13 +110,15 @@ def make_backend(sandbox: Path):
     if sys.platform == "win32" and "SYSTEMROOT" in os.environ:
         env["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
 
-    return LocalShellBackend(
+    backend_cls = _WindowsShBackend if sys.platform == "win32" and Path("C:/Program Files/Git/bin/sh.exe").exists() else LocalShellBackend
+    return backend_cls(
         root_dir=sandbox,
         virtual_mode=True,
         inherit_env=False,
         env=env,
         timeout=120,
     )
+
 
 
 def build_agent(sandbox: Path, mode: str = "single", use_skills: bool = False, model=None):

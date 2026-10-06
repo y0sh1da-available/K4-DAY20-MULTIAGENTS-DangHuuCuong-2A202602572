@@ -146,7 +146,14 @@ def curate_skills(results_dir="results", source_condition="baseline", out_dir=No
 
     llm = model or make_model()
     response = llm.invoke(prompt)
-    reply_content = response.content if hasattr(response, "content") else str(response)
+    reply_raw = response.content if hasattr(response, "content") else response
+    if isinstance(reply_raw, list):
+        reply_content = "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in reply_raw
+        )
+    else:
+        reply_content = str(reply_raw)
 
     written = []
     for name, skill_text in parse_skill_blocks(reply_content):
