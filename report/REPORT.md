@@ -178,6 +178,10 @@ Thực nghiệm cho thấy tác tử đơn lẻ (`baseline`) có năng lực gi�
   14. `python -m lab.run skills-auto --tasks all` (Chạy skills-auto toàn bộ 6 tác vụ với kỹ năng đã đóng băng)
   15. `python scripts/verify_freeze.py` (Xác thực tính toàn vẹn của tag freeze và không vi phạm quy tắc sửa kỹ năng)
   16. `python -m lab.compare > report/table.md` & `python scripts/check_breakdown.py` (Xuất bảng so sánh hiệu năng)
-- **Thử thách mở rộng (nếu có):** Đã triển khai thành công lớp bọc `_WindowsShBackend` ánh xạ lệnh shell sang Git Bash `sh.exe -c` trên môi trường Windows để đảm bảo tương thích 100% với các lệnh POSIX multiline của LangChain Deep Agents.
+- **Thử thách mở rộng (Bonus Challenges):**
+  - **Hướng 6c (Result Caching):** Đã hiện thực mô-đun lưu trữ kết quả `src/lab/cache.py` (lưu SHA-256 kết quả trên RAM & đĩa cứng `.cache/agent_results/`) và vượt qua 2/2 tests tại `tests/test_05_cache.py`.
+  - **Hướng 6e (Real-time Monitoring Dashboard):** Đã xây dựng máy chủ web GUI tại `scripts/dashboard.py` (cung cấp giao diện trực quan `/dashboard`, dữ liệu JSON `/metrics` và live logs `/logs`).
+  - **Báo cáo mở rộng 10 mục:** Báo cáo chi tiết toàn diện được tổng hợp đầy đủ tại [report/FINAL_REPORT.md](file:///c:/Users/vietn/OneDrive/Documents/K4-DAY20-MULTIAGENTS-DangHuuCuong-2A202602572/report/FINAL_REPORT.md).
 - **Ghi chú khác:** Không có. Khóa API và tệp `.env` được bảo mật nghiêm ngặt trong suốt quá trình thực nghiệm, không xuất hiện trong lịch sử git.
+
 
