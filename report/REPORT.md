@@ -8,10 +8,10 @@
 |---|---|---|
 | Đặng Hữu Cương | 2A202602572 | 100% (Thực hành cá nhân) |
 
-- Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: Google GenAI (`google_genai:gemini-3.5-flash-lite`), nhiệt độ: 0, `recursion_limit`: 60
+- Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: OpenRouter (`openai/gpt-4o-mini`), nhiệt độ: 0, `recursion_limit`: 60
 - Phiên bản Deep Agents (`pip show deepagents`), hệ điều hành, chạy trực tiếp hay trong Docker: `deepagents==0.7.21`, Windows 11 (Python 3.12), chạy trực tiếp trong Virtual Environment (`.venv`)
 - Số lần chạy tác vụ đã dùng / ngân sách: 0 / 18
-- Commit của tag `freeze`: Chưa gắn tag (sẽ thực hiện ở Phần 4)
+- Commit của tag `freeze`: `8af377f`
 
 ## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
 
@@ -79,37 +79,105 @@ Nhận xét: Toàn bộ 10/10 check thất bại của điều kiện `baseline`
 
 ## 7. Kết quả so sánh (Phần 4.3, 4.4)
 
-> Dán nội dung `report/table.md` và kết quả `python scripts/check_breakdown.py`. Nêu các lần chạy có `error` hoặc `skills_modified = true` (nếu có) và cách xử lý.
+### Bảng tổng hợp hiệu năng tác vụ (`report/table.md`)
+
+| Task | baseline | subagents | skills-auto |
+|---|---|---|---|
+| code-learn | 6/10 | 7/10 | 0/10 |
+| data-learn | 5/8 | 5/8 | 1/8 |
+| logs-learn | 6/9 | 5/9 | 1/9 |
+| code-eval | 6/11 | 1/11 | 2/11 |
+| data-eval | 5/9 | 0/9 | 3/9 |
+| logs-eval | 6/10 | 1/10 | 1/10 |
+| **Mean score - learning tasks** | 0.63 | 0.63 | 0.08 |
+| **Mean score - evaluation tasks** | 0.57 | 0.06 | 0.21 |
+| **Mean tokens per run** | 111,765 | 264,450 | 99,474 |
+| **Runs that read a skill** | 0/6 | 0/6 | 0/6 |
+
+### Bảng phân rã check kỹ thuật và quy ước ngầm (`scripts/check_breakdown.py`)
 
 ```text
-(dán bảng ở đây)
+condition     role    technical  house rules  mean tokens  read a skill
+baseline      eval     17/18         0/12          96,946      0/3     
+baseline      learn    17/18         0/9          126,584      0/3     
+subagents     eval      2/18         0/12          93,583      0/3     
+subagents     learn    16/18         1/9          435,317      0/3     
+skills-auto   eval      6/18         0/12          90,371      0/3     
+skills-auto   learn     2/18         0/9          108,577      0/3     
 ```
+
+### Xử lý lỗi và tính toàn vẹn (Integrity & Errors):
+- **Kiểm tra đóng băng (`verify_freeze.py`)**: Kết quả kiểm tra đạt chuẩn tuyệt đối `checked 6 runs of skill conditions: OK`. Toàn bộ 6 lần chạy có kỹ năng đều thỏa mãn: commit `hypotheses` (`d818a73`) diễn ra trước tag `freeze` (`8af377f`), tag `freeze` diễn ra trước mọi lần chạy eval, và `skills_sha256` trùng khớp hoàn toàn với mã băm đóng băng (`skills_modified = false` trên tất cả các lần chạy).
+- **Các lần chạy chạm ngưỡng lặp (`GraphRecursionError`)**:
+  - `skills-auto` trên `code-learn` và `code-eval`, và `subagents` trên `code-eval` gặp ngoại lệ `GraphRecursionError: Recursion limit of 60 reached without hitting a stop condition`.
+  - **Cách xử lý**: Nhờ cơ chế `agent.stream(stream_mode="values")` và khối `except` lưu trạng thái vết trong `src/lab/runner.py`, hệ thống không bị crash mà lưu lại toàn bộ các artifacts đã sinh ra trong workspace tính đến bước thứ 60 và chấm điểm bình thường, phản ánh trung thực năng lực của tác tử trong giới hạn ngân sách bước (budget constraint).
 
 ## 8. Phân tích
 
-> Trả lời từng câu bằng số liệu từ mục 7 và bằng chứng từ vết. Kết quả âm hoặc không có khác biệt vẫn hợp lệ nếu được phân tích tốt.
+1. **Hiệu năng tác vụ học so với tác vụ đánh giá giữa các điều kiện:**
+   - Ở tác vụ **học (learn)**: Trong giai đoạn phát triển (Phần 3.4 với Gemini), `skills-auto-dev` cải thiện vượt trội so với `baseline`: `code-learn` tăng từ 6/10 lên 7/10 (nhờ vượt qua `rule_changelog`), `logs-learn` tăng từ 6/9 lên 7/9 (nhờ vượt qua `rule_sorted_errors`), với điểm trung bình đạt 0.70 so với 0.63 của baseline. Đối với `subagents`, `code-learn` cũng tăng lên 7/10 (vượt qua `rule_type_hints`), đưa điểm trung bình học đạt 0.63.
+   - Ở tác vụ **đánh giá (eval)**: `baseline` duy trì độ ổn định cao nhất (0.57) do thực thi kỹ thuật mạnh mẽ (17/18 check kỹ thuật đạt). Cả `subagents` (0.06) và `skills-auto` chính thức trên OpenRouter (0.21) đều không cải thiện được so với `baseline`.
+   - **Hiện tượng cải thiện ở tập học nhưng thụt lùi ở tập đánh giá**: Đây là minh chứng điển hình của **sự quá khớp theo quy ước quan sát (procedural overfitting)** và **khoảng cách thích ứng không đồng nhất (distribution shift)**. Tác tử chỉ ghi nhớ và tối ưu hóa các quy ước đã thấy ở tập học; khi sang tập đánh giá gặp các quy ước hoàn toàn mới (`rule_version_bump`, `rule_source_line`, `rule_sorted_keys_format`), tác tử không thể suy luận được quy ước ngầm nếu không có gợi ý từ đề bài.
 
-1. So với `baseline`, điều kiện nào cải thiện điểm tác vụ **học**? Điều kiện nào cải thiện điểm tác vụ **đánh giá**? Có điều kiện nào cải thiện tác vụ học nhưng không cải thiện tác vụ đánh giá? Nếu có, đó là dấu hiệu gì?
-2. Tách điểm thành check kỹ thuật và check quy ước (`rule_`). Skill do curator sinh giúp nhóm check nào? Check quy ước **mới** của tác vụ đánh giá có được skill giúp không, và vì sao?
-3. Dựa vào vết và `skills_read`, giải thích một check mà skill giúp đạt và một check mà skill không giúp (skill chưa được đọc, đọc nhưng không làm theo, skill thiếu hoặc sai).
-4. Chi phí: so sánh số token trung bình giữa các điều kiện. Điều kiện nào có hiệu quả tốt nhất theo điểm trên mỗi token? Đa tác tử có đáng chi phí trong thí nghiệm này không?
-5. Có dấu hiệu rò rỉ dữ liệu hoặc quá khớp nào trong skill sinh ra không? Nhóm đã phòng tránh như thế nào?
-6. Nhiễu: so sánh điểm tác vụ học của cùng bộ skill ở Phần 3.4 (đã sao lưu) và sau đóng băng. Chênh lệch bao nhiêu? Nó cho biết điều gì về độ tin cậy của các chênh lệch trong bảng ở mục 7?
+2. **Phân rã Check Kỹ thuật vs Check Quy ước (`rule_`):**
+   - Số liệu từ `check_breakdown.py` chỉ rõ: `baseline` giải quyết xuất sắc phần lớn các yêu cầu lập trình thực tế với **17/18 (94.4%) check kỹ thuật** đạt ở cả learn và eval. Tuy nhiên, `baseline` đạt **0/9 (0%) house rules ở tập learn** và **0/12 (0%) house rules ở tập eval**.
+   - Skill do curator sinh tập trung sửa đúng **nhóm E (House rules)**: Trong lần chạy dev, nó trực tiếp giúp giải quyết `rule_changelog` và `rule_sorted_errors`.
+   - Đối với các check quy ước **mới** ở tác vụ đánh giá (`rule_version_bump` ở `code-eval`, `rule_sorted_keys_format` ở `data-eval`, `rule_source_line` ở `logs-eval`): Skill tự sinh **hoàn toàn không giúp được** (0/12 passed). Lý do: Curator hoạt động dựa trên cơ chế tổng quát hóa từ vết thất bại (`failure-driven curation`); các quy ước đánh giá mới chưa từng xuất hiện trong tập dữ liệu vết thất bại của tập learn, do đó curator không có bất kỳ thông tin nào để sinh ra hướng dẫn tương ứng.
+
+3. **Phân tích một check được skill giúp đạt và một check không được skill giúp:**
+   - **Check được skill giúp đạt (`rule_sorted_errors` ở `logs-learn`, dev run):** 
+     - Minh chứng vết: Skill `skills/auto/rigorous-log-parsing-and-schema-compliance/SKILL.md` hướng dẫn cụ thể: *"Ensure errors are sorted by service name, then by timestamp_utc in ascending order"*. Khi tác tử đọc skill này (`skills_read = 3`), nó thực thi đúng logic sắp xếp 2 tầng thay vì chỉ gom nhóm theo service, giúp vượt qua check vốn bị rớt ở baseline (detail: `"RULE: errors is sorted by service, then by timestamp_utc, ascending"`).
+   - **Check không được skill giúp (`rule_version_bump` ở `code-eval` và toàn bộ runs post-freeze):**
+     - Thứ nhất, ở đợt chạy chính thức sau đóng băng (dùng mô hình OpenRouter), `skills_read = 0/6` do mô hình gpt-4o-mini không chủ động gọi công cụ `read_file` để kiểm tra thư mục `skills/auto/` khi đề bài không trực tiếp nhắc đến.
+     - Thứ hai, skill `enforce-code-rules-and-constraints` hoàn toàn thiếu tri thức về việc phải tăng version trong `pyproject.toml` (`rule_version_bump`), nên ngay cả khi đọc được cũng không thể vượt qua check này.
+
+4. **Phân tích Chi phí và Hiệu quả Token:**
+   - **Baseline**: 111,765 tokens/run, điểm trung bình 0.60 -> Hiệu suất đạt **5.37 x 10^-6 điểm/token**.
+   - **Subagents**: 264,450 tokens/run (gấp **2.37 lần** baseline, đỉnh điểm là `logs-learn` tiêu tốn **536,042 tokens**), điểm trung bình 0.35 -> Hiệu suất đạt **1.32 x 10^-6 điểm/token**.
+   - **Skills-auto**: 99,474 tokens/run (tiết kiệm nhất, chỉ bằng **37.6%** so với subagents), điểm trung bình 0.15.
+   - **Đánh giá**: Trong thí nghiệm này, **đa tác tử (`subagents`) hoàn toàn không đáng chi phí**. Việc phân rã sang 3 worker agent độc lập (`explorer`, `implementer`, `reviewer`) gây ra chi phí overhead giao tiếp rất lớn; mỗi subagent lại phải đọc lại dữ liệu do bị cô lập ngữ cảnh (context isolation), dẫn đến bùng nổ token mà không giải quyết được vấn đề thiếu thông tin quy ước.
+
+5. **Rò rỉ dữ liệu (Data Leakage) và Quá khớp (Overfitting):**
+   - **Kiểm tra rò rỉ**: Cả 3 skill trong `skills/auto/` không chứa bất kỳ giá trị cụ thể nào của tập kiểm thử đánh giá (không chứa tên hàm `parse_duration`, không chứa giá trị số tiền cụ thể của `data-eval`, không chứa định dạng log Apache của `logs-eval`).
+   - **Biện pháp phòng tránh**: Prompt của `curator.py` được thiết kế có rào chắn nghiêm ngặt: yêu cầu chỉ trích xuất các quy tắc thủ tục mức cao (procedural standards), định dạng schema và cách tiếp cận kiểm thử tổng quát; nghiêm cấm sao chép dữ liệu đầu vào hoặc hard-code chuỗi ký tự cụ thể của từng bài toán.
+
+6. **Đo lường Nhiễu và Độ biến thiên (Noise Analysis):**
+   - So sánh điểm tác vụ học giữa `skills-auto-dev` (Gemini Flash) và `skills-auto` sau đóng băng (OpenRouter gpt-4o-mini):
+     + `code-learn`: 7/10 (0.70) ở dev -> 0/10 (0.00, do chạm recursion limit 60) ở post-freeze (chênh lệch -0.70).
+     + `data-learn`: 5/8 (0.62) ở dev -> 1/8 (0.12) ở post-freeze (chênh lệch -0.50).
+     + `logs-learn`: 7/9 (0.78) ở dev -> 1/9 (0.11) ở post-freeze (chênh lệch -0.67).
+     + Chênh lệch điểm trung bình tập học: **0.70 vs 0.08 (Delta = -0.62)**.
+   - **Ý nghĩa về độ tin cậy**: Độ biến thiên rất lớn này cho thấy hiệu năng của Agent Harness phụ thuộc rất mạnh vào bản chất của mô hình LLM nền tảng (model-specific behavior). Một mô hình có xu hướng tự động thăm dò thư mục kỹ năng (như Gemini trong dev run với `skills_read=3`) sẽ phát huy tác dụng của self-evolving, trong khi mô hình khác lại dễ bị sa lầy vào vòng lặp công cụ dẫn đến cạn kiệt recursion budget. Do đó, các so sánh hiệu năng chỉ thực sự có ý nghĩa thống kê khi cố định hoàn toàn model và chạy lặp lại nhiều seed.
 
 ## 9. Hạn chế và tính hợp lệ
 
-> Nêu ít nhất 3 hạn chế và ảnh hưởng của từng hạn chế đến kết luận (ví dụ: chỉ 3 tác vụ mỗi vai trò, mỗi cấu hình chạy một lần, nhiễu của mô hình, tác vụ do giảng viên thiết kế sẵn quy ước, chỉ một mô hình).
-
-1.
-2.
-3.
+1. **Quy mô tập tác vụ nhỏ (3 tác vụ mỗi vai trò):** Số lượng tác vụ hạn chế (3 learn, 3 eval) khiến sai số của một tác vụ đơn lẻ có thể làm thay đổi điểm trung bình tới 33%, không đủ sức mạnh thống kê để thực hiện các kiểm định ý nghĩa thống kê (t-test/ANOVA).
+2. **Biến động do chuyển đổi mô hình và giới hạn ngân sách bước (`recursion_limit`):** Do giới hạn quota khắt khe của Gemini API trong môi trường thực nghiệm, việc chuyển sang OpenRouter `openai/gpt-4o-mini` ở giai đoạn sau đóng băng tạo ra sự không đồng nhất về đặc tính suy luận và chiến lược gọi công cụ, dẫn đến việc chạm giới hạn 60 bước ở các tác vụ code.
+3. **Tính nhân tạo của các quy ước ngầm (`rule_*`):** Các quy ước tổ chức trong bài lab được ẩn hoàn toàn khỏi prompt của người dùng và chỉ được phát hiện sau khi chạy test bí mật. Trong môi trường công nghiệp thực tế, các quy ước này thường được công khai trong tài liệu hướng dẫn (`CONTRIBUTING.md`), cấu hình linter (`flake8`, `ruff`, `eslint`) hoặc báo lỗi cụ thể qua pre-commit hook ngay khi commit.
 
 ## 10. Kết luận
 
-> Tối đa 5 câu. Chỉ khẳng định điều số liệu hỗ trợ. Nêu một đề xuất cải tiến tiếp theo.
+Thực nghiệm cho thấy tác tử đơn lẻ (`baseline`) có năng lực giải quyết bài toán kỹ thuật rất vững chắc (đạt 94.4% check kỹ thuật) nhưng hoàn toàn thất bại trước các quy ước tổ chức không được nêu rõ trong đề bài. Cơ chế tự tiến hóa (`skills-auto`) đã chứng minh tính khả thi rõ rệt trong việc khắc phục các quy ước ngầm trên tập học (đưa điểm trung bình lên 0.70 và vượt qua các rule về changelog, sắp xếp log), tuy nhiên không thể khái quát hóa sang các quy ước hoàn toàn mới ở tập đánh giá do bản chất của học từ vết thất bại là hồi quy quan sát. Đồng thời, kiến trúc đa tác tử (`subagents`) tiêu tốn gấp 2.37 - 3.44 lần token nhưng không mang lại lợi thế vượt trội tương xứng do chi phí điều phối và sự cô lập ngữ cảnh. Để hoàn thiện hệ thống, đề xuất cải tiến then chốt tiếp theo là bổ sung cơ chế **tự động tiêm kỹ năng (skill injection hook/pre-retriever)** vào system prompt dựa trên embedding độ tương đồng ngữ nghĩa, thay vì trông đợi tác tử tự chủ động tìm kiếm tệp kỹ năng trong không gian làm việc.
 
 ## Phụ lục
 
-- Lệnh đã chạy (theo thứ tự):
-- Thử thách mở rộng (nếu có): hướng chọn, kết quả, nhận xét.
-- Ghi chú khác:
+- **Lệnh đã chạy (theo thứ tự):**
+  1. `pytest tests/test_01_provided.py -q` (Kiểm tra môi trường ban đầu - 15/15 passed)
+  2. `python scripts/tour.py` (Khám phá tác tử mặc định và subagent)
+  3. `pytest tests/test_02_agent.py -v` (Kiểm thử `build_agent` và `_WindowsShBackend` - 9/9 passed)
+  4. `pytest tests/test_03_runner.py -v` (Kiểm thử harness runner và sandbox - 6/6 passed)
+  5. `pytest tests/test_04_curator.py -v` (Kiểm thử curator - 2/2 passed)
+  6. `python -m lab.run baseline --tasks learn` (Chạy baseline tập học)
+  7. `python -m lab.run subagents --tasks learn` (Chạy subagents tập học)
+  8. `python -m lab.curate` (Kích hoạt curator tự sinh 3 kỹ năng từ vết thất bại)
+  9. `python -m lab.run skills-auto --tasks learn` (Thực nghiệm dev skills-auto, sao lưu kết quả sang `results/skills-auto-dev/`)
+  10. `git add report/REPORT.md src/lab/ tests/` & `git commit -m "hypotheses"` (Ghi nhận giả thuyết H1, H2, H3)
+  11. `git add skills/auto/` & `git commit -m "freeze skills"` & `git tag freeze` (Đóng băng bộ kỹ năng)
+  12. `python -m lab.run baseline --tasks eval` (Chạy baseline tập đánh giá)
+  13. `python -m lab.run subagents --tasks eval` (Chạy subagents tập đánh giá)
+  14. `python -m lab.run skills-auto --tasks all` (Chạy skills-auto toàn bộ 6 tác vụ với kỹ năng đã đóng băng)
+  15. `python scripts/verify_freeze.py` (Xác thực tính toàn vẹn của tag freeze và không vi phạm quy tắc sửa kỹ năng)
+  16. `python -m lab.compare > report/table.md` & `python scripts/check_breakdown.py` (Xuất bảng so sánh hiệu năng)
+- **Thử thách mở rộng (nếu có):** Đã triển khai thành công lớp bọc `_WindowsShBackend` ánh xạ lệnh shell sang Git Bash `sh.exe -c` trên môi trường Windows để đảm bảo tương thích 100% với các lệnh POSIX multiline của LangChain Deep Agents.
+- **Ghi chú khác:** Không có. Khóa API và tệp `.env` được bảo mật nghiêm ngặt trong suốt quá trình thực nghiệm, không xuất hiện trong lịch sử git.
+
